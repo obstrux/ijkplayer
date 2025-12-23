@@ -119,4 +119,9 @@ void      ffp_set_property_int64(FFPlayer *ffp, int id, int64_t value);
 // must be freed with free();
 struct IjkMediaMeta *ffp_get_meta_l(FFPlayer *ffp);
 
+/* recording */
+int       ffp_start_recording(FFPlayer *ffp, const char *output_path);
+int       ffp_stop_recording(FFPlayer *ffp);
+int       ffp_is_recording(FFPlayer *ffp);
+
 #endif

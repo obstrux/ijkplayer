@@ -70,6 +70,14 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+        <activity
+            android:name="tv.danmaku.ijk.media.example.activities.RTSPTestActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:label="RTSP Test"
+            android:screenOrientation="user"
+            android:exported="false"
+            android:theme="@style/FullscreenTheme">
+        </activity>
 
         <service
             android:name="tv.danmaku.ijk.media.example.services.MediaPlayerService"

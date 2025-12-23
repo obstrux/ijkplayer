@@ -1,0 +1,92 @@
+# https://github.com/actions/runner-images
+
+on:
+  # push:
+  #   branches: [master]
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'macos version'
+        required: false
+        type: choice
+        default: 'macos-14'
+        options:
+          - macos-13
+          - macos-14
+          - macos-15
+      platform:
+        description: 'choose a platform for compile'
+        required: false
+        type: choice
+        default: 'all'
+        options:
+          - apple
+          - android
+          - all
+          - ios
+          - tvos
+          - macos
+      dryrun:
+        description: 'just run workflow,but not deploy'
+        required: false
+        type: choice
+        default: 'false'
+        options:
+          - true
+          - false
+      lib:
+        description: 'choose a lib for compile'
+        required: true
+        type: choice
+        default: 'ffmpeg7'
+        options:
+          - ffmpeg7
+          - ffmpeg6
+          - ffmpeg5
+          - ffmpeg4
+          - ijkffmpeg
+          - fftutorial
+          - ass
+          - bluray
+          - dav1d
+          - dvdread
+          - dvdnav
+          - harfbuzz
+          - fontconfig
+          - freetype
+          - fribidi
+          - openssl3
+          - openssl
+          - opus
+          - smb2
+          - soundtouch
+          - uavs3d
+          - unibreak
+          - yuv
+          - xml2
+  pull_request:
+    branches: [master]
+
+name: apple-android-common
+
+jobs:
+  build:
+    name: compile ${{ inputs.lib }} for ${{ inputs.platform }} then deploy
+    runs-on: ${{ inputs.os }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - uses: nttld/setup-ndk@v1
+      id: setup-ndk
+      with:
+        ndk-version: r27c
+        add-to-path: true
+        local-cache: false
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Install dependencies
+      run: .github/workflows/install-dependencies.sh ${{ inputs.lib }} ${{ inputs.platform }}
+    - name: One Step
+      run: .github/workflows/onestep.sh ${{ inputs.lib }} ${{ inputs.platform }} ${{ inputs.dryrun }}
+      env:
+        ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}

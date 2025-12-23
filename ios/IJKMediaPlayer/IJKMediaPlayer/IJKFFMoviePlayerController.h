@@ -138,6 +138,11 @@ typedef enum IJKLogLevel {
 
 - (void)didShutdown;
 
+#pragma mark Recording
+- (int)startRecording:(NSString *)outputPath;
+- (int)stopRecording;
+- (BOOL)isRecording;
+
 #pragma mark KVO properties
 @property (nonatomic, readonly) IJKFFMonitor *monitor;
 

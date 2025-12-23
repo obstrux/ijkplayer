@@ -31,6 +31,7 @@ import android.view.MenuItem;
 
 import tv.danmaku.ijk.media.example.R;
 import tv.danmaku.ijk.media.example.activities.RecentMediaActivity;
+import tv.danmaku.ijk.media.example.activities.RTSPTestActivity;
 import tv.danmaku.ijk.media.example.activities.SampleMediaActivity;
 import tv.danmaku.ijk.media.example.activities.SettingsActivity;
 
@@ -89,6 +90,8 @@ public class AppActivity extends AppCompatActivity {
             RecentMediaActivity.intentTo(this);
         } else if (id == R.id.action_sample) {
             SampleMediaActivity.intentTo(this);
+        } else if (id == R.id.action_rtsp_test) {
+            RTSPTestActivity.intentTo(this);
         }
 
         return super.onOptionsItemSelected(item);

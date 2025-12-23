@@ -22,6 +22,7 @@
 #import "IJKMoviePlayerViewController.h"
 #import "IJKDemoLocalFolderViewController.h"
 #import "IJKDemoSampleViewController.h"
+#import "IJKRTSPTestViewController.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 
 @interface IJKDemoMainViewController () <UITableViewDataSource, UITableViewDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate>
@@ -40,6 +41,7 @@
     self.title = @"Main";
     
     self.tableViewCellTitles = @[
+                                 @"RTSP Test (录像)",
                                  @"Local Folder",
                                  @"Movie Picker",
                                  @"Input URL",
@@ -128,6 +130,11 @@
         case 0: {
             switch (indexPath.row) {
                 case 0: {
+                    // RTSP Test
+                    [IJKRTSPTestViewController presentFrom:self];
+                } break;
+                    
+                case 1: {
                     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
 
                     IJKDemoLocalFolderViewController *viewController = [[IJKDemoLocalFolderViewController alloc] initWithFolderPath:documentsPath];
@@ -135,20 +142,20 @@
                     [self.navigationController pushViewController:viewController animated:YES];
                 } break;
 
-                case 1:
+                case 2:
                     [self startMediaBrowserFromViewController: self
                                                 usingDelegate: self];
                     break;
 
-                case 2:
+                case 3:
                     [self.navigationController pushViewController:[[IJKDemoInputURLViewController alloc] init] animated:YES];
                     break;
 
-                case 3:
+                case 4:
                     [self.navigationController pushViewController:[[IJKQRCodeScanViewController alloc] init] animated:YES];
                     break;
 
-                case 4:
+                case 5:
                     [self.navigationController pushViewController:[[IJKDemoSampleViewController alloc] init] animated:YES];
                     break;
 

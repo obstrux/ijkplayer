@@ -1125,6 +1125,52 @@ LABEL_RETURN:
     return;
 }
 
+static jint
+IjkMediaPlayer_startRecording(JNIEnv *env, jobject thiz, jstring path) {
+    jint retval = -1;
+    IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
+    const char *c_path = NULL;
+    JNI_CHECK_GOTO(path, env, "java/lang/IllegalArgumentException", "mpjni: startRecording: null path", LABEL_RETURN);
+    JNI_CHECK_GOTO(mp, env, "java/lang/IllegalStateException", "mpjni: startRecording: null mp", LABEL_RETURN);
+
+    c_path = (*env)->GetStringUTFChars(env, path, NULL);
+    JNI_CHECK_GOTO(c_path, env, "java/lang/OutOfMemoryError", "mpjni: startRecording: path.string oom", LABEL_RETURN);
+
+    ALOGV("startRecording: path %s", c_path);
+    retval = ijkmp_start_recording(mp, c_path);
+    (*env)->ReleaseStringUTFChars(env, path, c_path);
+
+LABEL_RETURN:
+    ijkmp_dec_ref_p(&mp);
+    return retval;
+}
+
+static jint
+IjkMediaPlayer_stopRecording(JNIEnv *env, jobject thiz) {
+    jint retval = -1;
+    IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
+    JNI_CHECK_GOTO(mp, env, "java/lang/IllegalStateException", "mpjni: stopRecording: null mp", LABEL_RETURN);
+
+    retval = ijkmp_stop_recording(mp);
+
+LABEL_RETURN:
+    ijkmp_dec_ref_p(&mp);
+    return retval;
+}
+
+static jboolean
+IjkMediaPlayer_isRecording(JNIEnv *env, jobject thiz) {
+    jboolean retval = JNI_FALSE;
+    IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
+    JNI_CHECK_GOTO(mp, env, NULL, "mpjni: isRecording: null mp", LABEL_RETURN);
+
+    retval = ijkmp_is_recording(mp) ? JNI_TRUE : JNI_FALSE;
+
+LABEL_RETURN:
+    ijkmp_dec_ref_p(&mp);
+    return retval;
+}
+
 
 
 
@@ -1178,6 +1224,11 @@ static JNINativeMethod g_methods[] = {
 
     { "native_setLogLevel",     "(I)V",                     (void *) IjkMediaPlayer_native_setLogLevel },
     { "_setFrameAtTime",        "(Ljava/lang/String;JJII)V", (void *) IjkMediaPlayer_setFrameAtTime },
+
+    // Recording API
+    { "_startRecording",        "(Ljava/lang/String;)I",    (void *) IjkMediaPlayer_startRecording },
+    { "_stopRecording",         "()I",                      (void *) IjkMediaPlayer_stopRecording },
+    { "_isRecording",           "()Z",                      (void *) IjkMediaPlayer_isRecording },
 };
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)

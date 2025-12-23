@@ -796,3 +796,41 @@ int ijkmp_get_msg(IjkMediaPlayer *mp, AVMessage *msg, int block)
 
     return -1;
 }
+
+// Recording control API implementation
+
+int ijkmp_start_recording(IjkMediaPlayer *mp, const char *output_path)
+{
+    assert(mp);
+    if (!output_path || strlen(output_path) == 0)
+        return -1;
+
+    MPTRACE("%s(%s)\n", __func__, output_path);
+    pthread_mutex_lock(&mp->mutex);
+    int ret = ffp_start_recording(mp->ffplayer, output_path);
+    pthread_mutex_unlock(&mp->mutex);
+    MPTRACE("%s(%s)=%d\n", __func__, output_path, ret);
+    return ret;
+}
+
+int ijkmp_stop_recording(IjkMediaPlayer *mp)
+{
+    assert(mp);
+
+    MPTRACE("%s\n", __func__);
+    pthread_mutex_lock(&mp->mutex);
+    int ret = ffp_stop_recording(mp->ffplayer);
+    pthread_mutex_unlock(&mp->mutex);
+    MPTRACE("%s()=%d\n", __func__, ret);
+    return ret;
+}
+
+int ijkmp_is_recording(IjkMediaPlayer *mp)
+{
+    assert(mp);
+
+    pthread_mutex_lock(&mp->mutex);
+    int ret = ffp_is_recording(mp->ffplayer);
+    pthread_mutex_unlock(&mp->mutex);
+    return ret;
+}

@@ -1282,4 +1282,39 @@ public final class IjkMediaPlayer extends AbstractMediaPlayer {
     public static native void native_profileBegin(String libName);
     public static native void native_profileEnd();
     public static native void native_setLogLevel(int level);
+
+    // ==================== Recording API ====================
+
+    /**
+     * Start recording the video stream to a file.
+     * Must be called after prepareAsync() has completed.
+     *
+     * @param outputPath The path to save the recording (e.g., /sdcard/Movies/record.mp4)
+     * @return 0 on success, negative value on error
+     */
+    public int startRecording(String outputPath) {
+        return _startRecording(outputPath);
+    }
+
+    /**
+     * Stop recording and finalize the output file.
+     *
+     * @return 0 on success, negative value on error
+     */
+    public int stopRecording() {
+        return _stopRecording();
+    }
+
+    /**
+     * Check if recording is currently active.
+     *
+     * @return true if recording is in progress
+     */
+    public boolean isRecording() {
+        return _isRecording();
+    }
+
+    private native int _startRecording(String outputPath);
+    private native int _stopRecording();
+    private native boolean _isRecording();
 }

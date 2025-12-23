@@ -17,7 +17,7 @@
 - [x] 使用 cmake 重新组织工程，抛弃之前的 ndk-build
 - [x] 合并 jni 调用，缩减了 so 的数量
 - [x] 使用全新的编译脚本，ffmpeg 使用 module-lite.sh
-- [x] 支持 rtsp 协议 
+- [x] 支持 rtsp 协议
 
 ## 安装使用
 
@@ -64,3 +64,14 @@
 ## 定制功能
 
 请邮件联系：[debugly@icloud.com](mailto:debugly@icloud.com)
+
+# 生成 xcframework
+
+```
+xcodebuild -create-xcframework \
+    -framework ./Release-iphoneos/IJKMediaFramework.framework \
+    -debug-symbols $(pwd)/Release-iphoneos/IJKMediaFramework.framework.dSYM \
+    -framework ./Release-iphonesimulator/IJKMediaFramework.framework \
+    -debug-symbols $(pwd)/Release-iphonesimulator/IJKMediaFramework.framework.dSYM \
+    -output ./IJKMediaFramework.xcframework
+```

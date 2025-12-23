@@ -84,7 +84,7 @@ public class Settings {
 
     public boolean getEnableSurfaceView() {
         String key = mAppContext.getString(R.string.pref_key_enable_surface_view);
-        return mSharedPreferences.getBoolean(key, false);
+        return mSharedPreferences.getBoolean(key, true);
     }
 
     public boolean getEnableTextureView() {
@@ -94,7 +94,7 @@ public class Settings {
 
     public boolean getEnableDetachedSurfaceTextureView() {
         String key = mAppContext.getString(R.string.pref_key_enable_detached_surface_texture);
-        return mSharedPreferences.getBoolean(key, false);
+        return mSharedPreferences.getBoolean(key, true);
     }
 
     public boolean getUsingMediaDataSource() {

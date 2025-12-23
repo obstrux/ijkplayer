@@ -10,6 +10,10 @@ extra
 ijkmedia/ijkyuv/
 ijkprof/android-ndk-profiler/
 
+.history
+
+IJKMediaFramework.xcframework
+
 # built application files
 *.apk
 *.ap_

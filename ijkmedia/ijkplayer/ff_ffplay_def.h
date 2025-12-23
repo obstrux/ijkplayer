@@ -157,6 +157,17 @@ typedef struct GetImgInfo {
     struct SwsContext *frame_img_convert_ctx;
 } GetImgInfo;
 
+typedef struct RecordContext {
+    AVFormatContext *output_ctx;    // 输出格式上下文
+    int is_recording;               // 录像状态标志
+    char *output_path;              // 输出文件路径
+    int64_t start_pts_v;            // 视频起始 PTS
+    int64_t start_pts_a;            // 音频起始 PTS
+    int video_stream_idx;           // 输出视频流索引
+    int audio_stream_idx;           // 输出音频流索引
+    SDL_mutex *record_mutex;        // 录像互斥锁
+} RecordContext;
+
 typedef struct MyAVPacketList {
     AVPacket pkt;
     struct MyAVPacketList *next;
@@ -720,6 +731,8 @@ typedef struct FFPlayer {
     char *mediacodec_default_name;
     int ijkmeta_delay_init;
     int render_wait_start;
+
+    RecordContext *record_ctx;      // 录像上下文
 } FFPlayer;
 
 #define fftime_to_milliseconds(ts) (av_rescale(ts, 1000, AV_TIME_BASE))

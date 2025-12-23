@@ -606,6 +606,35 @@ inline static int getPlayerOption(IJKFFOptionCategory category)
 {
 }
 
+#pragma mark - Recording
+
+- (int)startRecording:(NSString *)outputPath
+{
+    if (!_mediaPlayer)
+        return -1;
+    
+    if (!outputPath || outputPath.length == 0)
+        return -1;
+    
+    return ijkmp_start_recording(_mediaPlayer, [outputPath UTF8String]);
+}
+
+- (int)stopRecording
+{
+    if (!_mediaPlayer)
+        return -1;
+    
+    return ijkmp_stop_recording(_mediaPlayer);
+}
+
+- (BOOL)isRecording
+{
+    if (!_mediaPlayer)
+        return NO;
+    
+    return ijkmp_is_recording(_mediaPlayer) ? YES : NO;
+}
+
 - (IJKMPMoviePlaybackState)playbackState
 {
     if (!_mediaPlayer)

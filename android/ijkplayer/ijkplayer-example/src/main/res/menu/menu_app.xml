@@ -12,6 +12,10 @@
         android:title="@string/recent"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/action_rtsp_test"
+        android:title="RTSP Test"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/action_settings"
         android:title="@string/settings"
         app:showAsAction="ifRoom" />

@@ -128,6 +128,12 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
     private long mSeekEndTime = 0;
 
     private TextView subtitleDisplay;
+    
+    // 播放器配置回调
+    public interface OnPlayerOptionsListener {
+        void onPlayerOptions(IjkMediaPlayer player);
+    }
+    private OnPlayerOptionsListener mOnPlayerOptionsListener;
 
     public IjkVideoView(Context context) {
         super(context);
@@ -241,6 +247,39 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
                 Log.e(TAG, String.format(Locale.getDefault(), "invalid render %d\n", render));
                 break;
         }
+    }
+
+    /**
+     * 设置视频旋转角度
+     * 注意：仅 TextureRenderView 支持旋转，SurfaceRenderView 不支持
+     *
+     * @param degree 旋转角度，只支持 0、90、180、270
+     */
+    public void setVideoRotation(int degree) {
+        // 规范化角度值
+        degree = degree % 360;
+        if (degree < 0) {
+            degree += 360;
+        }
+        // 只支持 0、90、180、270
+        if (degree != 0 && degree != 90 && degree != 180 && degree != 270) {
+            Log.w(TAG, "setVideoRotation: unsupported degree " + degree + ", using 0");
+            degree = 0;
+        }
+        
+        mVideoRotationDegree = degree;
+        if (mRenderView != null) {
+            mRenderView.setVideoRotation(degree);
+        }
+    }
+
+    /**
+     * 获取当前视频旋转角度
+     *
+     * @return 当前旋转角度
+     */
+    public int getVideoRotation() {
+        return mVideoRotationDegree;
     }
 
     public void setHudView(TableLayout tableLayout) {
@@ -416,7 +455,9 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
     IMediaPlayer.OnPreparedListener mPreparedListener = new IMediaPlayer.OnPreparedListener() {
         public void onPrepared(IMediaPlayer mp) {
             mPrepareEndTime = System.currentTimeMillis();
-            mHudViewHolder.updateLoadCost(mPrepareEndTime - mPrepareStartTime);
+            if (mHudViewHolder != null) {
+                mHudViewHolder.updateLoadCost(mPrepareEndTime - mPrepareStartTime);
+            }
             mCurrentState = STATE_PREPARED;
 
             // Get the capabilities of the player for this stream
@@ -598,7 +639,9 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
         @Override
         public void onSeekComplete(IMediaPlayer mp) {
             mSeekEndTime = System.currentTimeMillis();
-            mHudViewHolder.updateSeekCost(mSeekEndTime - mSeekStartTime);
+            if (mHudViewHolder != null) {
+                mHudViewHolder.updateSeekCost(mSeekEndTime - mSeekStartTime);
+            }
         }
     };
 
@@ -651,6 +694,13 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
      */
     public void setOnInfoListener(IMediaPlayer.OnInfoListener l) {
         mOnInfoListener = l;
+    }
+    
+    /**
+     * Set a callback to configure player options before playback.
+     */
+    public void setOnPlayerOptionsListener(OnPlayerOptionsListener l) {
+        mOnPlayerOptionsListener = l;
     }
 
     // REMOVED: mSHCallback
@@ -920,7 +970,7 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
             IRenderView.AR_16_9_FIT_PARENT,
             IRenderView.AR_4_3_FIT_PARENT};
     private int mCurrentAspectRatioIndex = 0;
-    private int mCurrentAspectRatio = s_allAspectRatio[0];
+    private int mCurrentAspectRatio = s_allAspectRatio[1];
 
     public int toggleAspectRatio() {
         mCurrentAspectRatioIndex++;
@@ -929,6 +979,27 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
         mCurrentAspectRatio = s_allAspectRatio[mCurrentAspectRatioIndex];
         if (mRenderView != null)
             mRenderView.setAspectRatio(mCurrentAspectRatio);
+        return mCurrentAspectRatio;
+    }
+
+    /**
+     * 设置画面显示比例
+     *
+     * @param aspectRatio 比例类型，使用 IRenderView.AR_* 常量
+     */
+    public void setAspectRatio(int aspectRatio) {
+        mCurrentAspectRatio = aspectRatio;
+        if (mRenderView != null) {
+            mRenderView.setAspectRatio(aspectRatio);
+        }
+    }
+
+    /**
+     * 获取当前画面显示比例
+     *
+     * @return 比例类型
+     */
+    public int getAspectRatio() {
         return mCurrentAspectRatio;
     }
 
@@ -945,16 +1016,8 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
 
     private void initRenders() {
         mAllRenders.clear();
+        mAllRenders.add(RENDER_TEXTURE_VIEW);
 
-        if (mSettings.getEnableSurfaceView())
-            mAllRenders.add(RENDER_SURFACE_VIEW);
-        if (mSettings.getEnableTextureView() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH)
-            mAllRenders.add(RENDER_TEXTURE_VIEW);
-        if (mSettings.getEnableNoView())
-            mAllRenders.add(RENDER_NONE);
-
-        if (mAllRenders.isEmpty())
-            mAllRenders.add(RENDER_SURFACE_VIEW);
         mCurrentRender = mAllRenders.get(mCurrentRenderIndex);
         setRender(mCurrentRender);
     }
@@ -1041,54 +1104,14 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
                 if (mUri != null) {
                     ijkMediaPlayer = new IjkMediaPlayer();
                     ijkMediaPlayer.native_setLogLevel(IjkMediaPlayer.IJK_LOG_DEBUG);
-
-                    if (mManifestString != null) {
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "iformat", "ijklas");
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "find_stream_info", 0);
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "manifest_string", mManifestString);
+                    // 调用外部配置回调
+                    if (mOnPlayerOptionsListener != null) {
+                        mOnPlayerOptionsListener.onPlayerOptions(ijkMediaPlayer);
                     }
-                    if (mSettings.getUsingMediaCodec()) {
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1);
-                        if (mSettings.getUsingMediaCodecAutoRotate()) {
-                            ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1);
-                        } else {
-                            ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 0);
-                        }
-                        if (mSettings.getMediaCodecHandleResolutionChange()) {
-                            ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1);
-                        } else {
-                            ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 0);
-                        }
-                    } else {
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 0);
-                    }
-
-                    if (mSettings.getUsingOpenSLES()) {
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "opensles", 1);
-                    } else {
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "opensles", 0);
-                    }
-
-                    String pixelFormat = mSettings.getPixelFormat();
-                    if (TextUtils.isEmpty(pixelFormat)) {
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "overlay-format", IjkMediaPlayer.SDL_FCC_RV32);
-                    } else {
-                        ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "overlay-format", pixelFormat);
-                    }
-                    ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1);
-                    ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 0);
-
-                    ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "http-detect-range-support", 0);
-
-                    ijkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_CODEC, "skip_loop_filter", 48);
                 }
                 mediaPlayer = ijkMediaPlayer;
             }
             break;
-        }
-
-        if (mSettings.getEnableDetachedSurfaceTextureView()) {
-            mediaPlayer = new TextureMediaPlayer(mediaPlayer);
         }
 
         return mediaPlayer;
@@ -1267,5 +1290,40 @@ public class IjkVideoView extends FrameLayout implements MediaController.MediaPl
 
     public int getSelectedTrack(int trackType) {
         return MediaPlayerCompat.getSelectedTrack(mMediaPlayer, trackType);
+    }
+    
+    //-------------------------
+    // Extend: Snapshot and Recording
+    //-------------------------
+    
+    /**
+     * Get current frame as bitmap
+     */
+    public android.graphics.Bitmap getBitmap() {
+        if (mRenderView != null && mRenderView instanceof TextureRenderView) {
+            TextureRenderView textureView = (TextureRenderView) mRenderView;
+            return textureView.getBitmap();
+        }
+        return null;
+    }
+    
+    /**
+     * Start recording to specified file path
+     */
+    public int startRecording(String path) {
+        if (mMediaPlayer != null && mMediaPlayer instanceof IjkMediaPlayer) {
+            return ((IjkMediaPlayer) mMediaPlayer).startRecording(path);
+        }
+        return -1;
+    }
+    
+    /**
+     * Stop recording
+     */
+    public int stopRecording() {
+        if (mMediaPlayer != null && mMediaPlayer instanceof IjkMediaPlayer) {
+            return ((IjkMediaPlayer) mMediaPlayer).stopRecording();
+        }
+        return -1;
     }
 }

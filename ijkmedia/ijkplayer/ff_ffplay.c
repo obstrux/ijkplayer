@@ -97,6 +97,9 @@
 // static const AVOption ffp_context_options[] = ...
 #include "ff_ffplay_options.h"
 
+// Forward declarations for recording functions
+static int ffp_record_packet(FFPlayer *ffp, AVPacket *pkt, int src_stream_index);
+
 static AVPacket flush_pkt;
 
 #if CONFIG_AVFILTER
@@ -3581,9 +3584,11 @@ static int read_thread(void *arg)
                 (double)(ffp->start_time != AV_NOPTS_VALUE ? ffp->start_time : 0) / 1000000
                 <= ((double)ffp->duration / 1000000);
         if (pkt->stream_index == is->audio_stream && pkt_in_play_range) {
+            ffp_record_packet(ffp, pkt, is->audio_stream);
             packet_queue_put(&is->audioq, pkt);
         } else if (pkt->stream_index == is->video_stream && pkt_in_play_range
                    && !(is->video_st && (is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC))) {
+            ffp_record_packet(ffp, pkt, is->video_stream);
             packet_queue_put(&is->videoq, pkt);
         } else if (pkt->stream_index == is->subtitle_stream && pkt_in_play_range) {
             packet_queue_put(&is->subtitleq, pkt);
@@ -5039,3 +5044,260 @@ IjkMediaMeta *ffp_get_meta_l(FFPlayer *ffp)
 
     return ffp->meta;
 }
+
+// ==================== Recording Functions ====================
+
+static int ffp_record_packet(FFPlayer *ffp, AVPacket *pkt, int src_stream_index)
+{
+    if (!ffp || !ffp->record_ctx || !ffp->record_ctx->is_recording)
+        return 0;
+
+    RecordContext *rc = ffp->record_ctx;
+    VideoState *is = ffp->is;
+
+    if (!rc->output_ctx || !is || !is->ic)
+        return 0;
+
+    SDL_LockMutex(rc->record_mutex);
+
+    if (!rc->is_recording) {
+        SDL_UnlockMutex(rc->record_mutex);
+        return 0;
+    }
+
+    AVPacket pkt_out;
+    av_init_packet(&pkt_out);
+
+    // 复制数据包
+    if (av_packet_ref(&pkt_out, pkt) < 0) {
+        SDL_UnlockMutex(rc->record_mutex);
+        return -1;
+    }
+
+    // 确定目标流索引并调整时间戳
+    int out_stream_index = -1;
+    AVStream *in_stream = NULL;
+    AVStream *out_stream = NULL;
+
+    if (src_stream_index == is->video_stream && rc->video_stream_idx >= 0) {
+        out_stream_index = rc->video_stream_idx;
+        in_stream = is->video_st;
+
+        // 初始化起始 PTS
+        if (rc->start_pts_v == AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE) {
+            rc->start_pts_v = pkt->pts;
+        }
+
+        // 调整时间戳（减去起始时间）
+        if (pkt_out.pts != AV_NOPTS_VALUE && rc->start_pts_v != AV_NOPTS_VALUE) {
+            pkt_out.pts -= rc->start_pts_v;
+        }
+        if (pkt_out.dts != AV_NOPTS_VALUE && rc->start_pts_v != AV_NOPTS_VALUE) {
+            pkt_out.dts -= rc->start_pts_v;
+        }
+    } else if (src_stream_index == is->audio_stream && rc->audio_stream_idx >= 0) {
+        out_stream_index = rc->audio_stream_idx;
+        in_stream = is->audio_st;
+
+        // 初始化起始 PTS
+        if (rc->start_pts_a == AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE) {
+            rc->start_pts_a = pkt->pts;
+        }
+
+        // 调整时间戳
+        if (pkt_out.pts != AV_NOPTS_VALUE && rc->start_pts_a != AV_NOPTS_VALUE) {
+            pkt_out.pts -= rc->start_pts_a;
+        }
+        if (pkt_out.dts != AV_NOPTS_VALUE && rc->start_pts_a != AV_NOPTS_VALUE) {
+            pkt_out.dts -= rc->start_pts_a;
+        }
+    }
+
+    if (out_stream_index < 0 || !in_stream) {
+        av_packet_unref(&pkt_out);
+        SDL_UnlockMutex(rc->record_mutex);
+        return 0;
+    }
+
+    out_stream = rc->output_ctx->streams[out_stream_index];
+
+    // 转换时间基
+    pkt_out.pts = av_rescale_q_rnd(pkt_out.pts, in_stream->time_base, out_stream->time_base,
+                                    AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX);
+    pkt_out.dts = av_rescale_q_rnd(pkt_out.dts, in_stream->time_base, out_stream->time_base,
+                                    AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX);
+    pkt_out.duration = av_rescale_q(pkt_out.duration, in_stream->time_base, out_stream->time_base);
+    pkt_out.stream_index = out_stream_index;
+    pkt_out.pos = -1;
+
+    // 写入数据包
+    int ret = av_interleaved_write_frame(rc->output_ctx, &pkt_out);
+    if (ret < 0) {
+        av_log(ffp, AV_LOG_ERROR, "Error writing recording frame: %d\n", ret);
+    }
+
+    av_packet_unref(&pkt_out);
+    SDL_UnlockMutex(rc->record_mutex);
+
+    return ret;
+}
+
+int ffp_stop_recording(FFPlayer *ffp)
+{
+    if (!ffp || !ffp->record_ctx) {
+        return 0;
+    }
+
+    RecordContext *rc = ffp->record_ctx;
+
+    SDL_LockMutex(rc->record_mutex);
+    rc->is_recording = 0;
+    SDL_UnlockMutex(rc->record_mutex);
+
+    // 写入文件尾
+    if (rc->output_ctx) {
+        av_write_trailer(rc->output_ctx);
+
+        if (rc->output_ctx->pb && !(rc->output_ctx->oformat->flags & AVFMT_NOFILE)) {
+            avio_closep(&rc->output_ctx->pb);
+        }
+        avformat_free_context(rc->output_ctx);
+        rc->output_ctx = NULL;
+    }
+
+    if (rc->output_path) {
+        av_log(ffp, AV_LOG_INFO, "ffp_stop_recording: stopped recording to %s\n", rc->output_path);
+        av_free(rc->output_path);
+        rc->output_path = NULL;
+    }
+
+    SDL_DestroyMutex(rc->record_mutex);
+    av_free(rc);
+    ffp->record_ctx = NULL;
+
+    return 0;
+}
+
+int ffp_is_recording(FFPlayer *ffp)
+{
+    if (!ffp || !ffp->record_ctx)
+        return 0;
+    return ffp->record_ctx->is_recording;
+}
+
+int ffp_start_recording(FFPlayer *ffp, const char *output_path)
+{
+    if (!ffp || !output_path || strlen(output_path) == 0) {
+        av_log(NULL, AV_LOG_ERROR, "ffp_start_recording: invalid parameters\n");
+        return -1;
+    }
+
+    VideoState *is = ffp->is;
+    if (!is || !is->ic) {
+        av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: player not ready\n");
+        return -1;
+    }
+
+    // 如果已经在录像，先停止
+    if (ffp->record_ctx && ffp->record_ctx->is_recording) {
+        ffp_stop_recording(ffp);
+    }
+
+    // 创建录像上下文
+    RecordContext *rc = av_mallocz(sizeof(RecordContext));
+    if (!rc) {
+        av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: failed to allocate RecordContext\n");
+        return -1;
+    }
+
+    rc->record_mutex = SDL_CreateMutex();
+    if (!rc->record_mutex) {
+        av_free(rc);
+        return -1;
+    }
+
+    rc->output_path = av_strdup(output_path);
+    rc->start_pts_v = AV_NOPTS_VALUE;
+    rc->start_pts_a = AV_NOPTS_VALUE;
+    rc->video_stream_idx = -1;
+    rc->audio_stream_idx = -1;
+
+    // 创建输出格式上下文
+    int ret = avformat_alloc_output_context2(&rc->output_ctx, NULL, NULL, output_path);
+    if (ret < 0 || !rc->output_ctx) {
+        av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: failed to create output context\n");
+        goto fail;
+    }
+
+    // 添加视频流
+    if (is->video_st) {
+        AVStream *out_stream = avformat_new_stream(rc->output_ctx, NULL);
+        if (!out_stream) {
+            av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: failed to create video stream\n");
+            goto fail;
+        }
+
+        ret = avcodec_parameters_copy(out_stream->codecpar, is->video_st->codecpar);
+        if (ret < 0) {
+            av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: failed to copy video codec params\n");
+            goto fail;
+        }
+        out_stream->codecpar->codec_tag = 0;
+        out_stream->time_base = is->video_st->time_base;
+        rc->video_stream_idx = out_stream->index;
+    }
+
+    // 添加音频流
+    if (is->audio_st) {
+        AVStream *out_stream = avformat_new_stream(rc->output_ctx, NULL);
+        if (!out_stream) {
+            av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: failed to create audio stream\n");
+            goto fail;
+        }
+
+        ret = avcodec_parameters_copy(out_stream->codecpar, is->audio_st->codecpar);
+        if (ret < 0) {
+            av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: failed to copy audio codec params\n");
+            goto fail;
+        }
+        out_stream->codecpar->codec_tag = 0;
+        out_stream->time_base = is->audio_st->time_base;
+        rc->audio_stream_idx = out_stream->index;
+    }
+
+    // 打开输出文件
+    if (!(rc->output_ctx->oformat->flags & AVFMT_NOFILE)) {
+        ret = avio_open(&rc->output_ctx->pb, output_path, AVIO_FLAG_WRITE);
+        if (ret < 0) {
+            av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: failed to open output file: %s\n", output_path);
+            goto fail;
+        }
+    }
+
+    // 写入文件头
+    ret = avformat_write_header(rc->output_ctx, NULL);
+    if (ret < 0) {
+        av_log(ffp, AV_LOG_ERROR, "ffp_start_recording: failed to write header\n");
+        goto fail;
+    }
+
+    rc->is_recording = 1;
+    ffp->record_ctx = rc;
+
+    av_log(ffp, AV_LOG_INFO, "ffp_start_recording: started recording to %s\n", output_path);
+    return 0;
+
+fail:
+    if (rc->output_ctx) {
+        if (rc->output_ctx->pb)
+            avio_closep(&rc->output_ctx->pb);
+        avformat_free_context(rc->output_ctx);
+    }
+    if (rc->output_path)
+        av_free(rc->output_path);
+    if (rc->record_mutex)
+        SDL_DestroyMutex(rc->record_mutex);
+    av_free(rc);
+    return -1;
+}
+

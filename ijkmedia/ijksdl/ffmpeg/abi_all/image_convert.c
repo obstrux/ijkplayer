@@ -53,6 +53,27 @@ int ijk_image_convert(int width, int height,
                 break;
             }
             break;
+        case AV_PIX_FMT_YUV422P:
+        case AV_PIX_FMT_YUVJ422P: // MJPEG uses YUVJ422P
+            switch (dst_format) {
+            case AV_PIX_FMT_RGB565:
+                return I422ToRGB565(
+                    src_data[0], src_linesize[0],
+                    src_data[1], src_linesize[1],
+                    src_data[2], src_linesize[2],
+                    dst_data[0], dst_linesize[0],
+                    width, height);
+            case AV_PIX_FMT_0BGR32:
+                return I422ToABGR(
+                    src_data[0], src_linesize[0],
+                    src_data[1], src_linesize[1],
+                    src_data[2], src_linesize[2],
+                    dst_data[0], dst_linesize[0],
+                    width, height);
+            default:
+                break;
+            }
+            break;
         default:
             break;
     }
